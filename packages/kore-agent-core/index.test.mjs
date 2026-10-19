@@ -1,0 +1,12 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {validateOperations,createChangeProposal,runApprovedProposal,generateProposal} from "./index.mjs";
+test("validates proposed edits",()=>assert.equal(validateOperations([{type:"write_file",path:"src/app.ts",content:"hello"}])[0].path,"src/app.ts"));
+test("rejects traversal",()=>assert.throws(()=>validateOperations([{type:"delete_file",path:"../secret"}]),/Forbidden/));
+test("rejects absolute paths",()=>assert.throws(()=>validateOperations([{type:"read_file",path:"C:\\secret"}]),/Unsafe/));
+test("rejects environment files",()=>assert.throws(()=>validateOperations([{type:"read_file",path:".env"}]),/Forbidden/));
+test("rejects oversize operations",()=>assert.throws(()=>validateOperations([{type:"write_file",path:"a",content:"x".repeat(6)}],{maxBytes:5}),/Invalid/));
+test("requires approval before execution",async()=>{const p=createChangeProposal({request:"make page",operations:[]});await assert.rejects(()=>runApprovedProposal(p,{adapter:{apply:()=>true}}),/approval/)});
+test("executes only through approved adapter",async()=>{const p=createChangeProposal({request:"make page",operations:[{type:"write_file",path:"index.html",content:"ok"}]});let called=false;await runApprovedProposal(p,{approved:true,adapter:{apply:ops=>{called=true;assert.equal(ops.length,1)}}});assert.ok(called)});
+test("generates from model adapter without executing",async()=>{const p=await generateProposal({userRequest:"create landing page",model:{generate:async()=>JSON.stringify({operations:[{type:"write_file",path:"index.html",content:"<h1>Hello</h1>"}]})}});assert.ok(p.requiresApproval);assert.equal(p.operations.length,1)});
+test("rejects invalid model response",async()=>assert.rejects(()=>generateProposal({userRequest:"x",model:{generate:async()=>"{bad"}}),/invalid JSON/));
