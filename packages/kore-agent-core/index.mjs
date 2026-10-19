@@ -1,5 +1,6 @@
 import path from "node:path";
 const ALLOWED = new Set(["write_file", "delete_file", "read_file"]);
+const SENSITIVE = /^(?:\.env(?:\..*)?|.*\.(?:pem|key|p12|pfx)|id_(?:rsa|ed25519)|credentials(?:\..*)?|secrets?(?:\..*)?)$/i;
 export function validateOperations(operations, {maxOperations = 25, maxBytes = 500000} = {}) {
  if (!Array.isArray(operations) || operations.length > maxOperations) throw new Error("Invalid operation count");
  return operations.map((op) => {
@@ -8,6 +9,7 @@ export function validateOperations(operations, {maxOperations = 25, maxBytes = 5
   if (!normalized || normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized) || normalized.includes("\0")) throw new Error("Unsafe file path");
   const parts = normalized.split("/");
   if (parts.some(p => !p || p === "." || p === "..") || parts.some(p => [".git", "node_modules", ".env"].includes(p))) throw new Error("Forbidden file path");
+  if (parts.some(p => SENSITIVE.test(p))) throw new Error("Sensitive file path");
   if (path.posix.normalize(normalized) !== normalized) throw new Error("Noncanonical file path");
   if (op.type === "write_file" && (typeof op.content !== "string" || Buffer.byteLength(op.content) > maxBytes)) throw new Error("Invalid file content");
   return Object.freeze({type:op.type,path:normalized,...(op.type === "write_file" ? {content:op.content} : {})});
